@@ -2,7 +2,6 @@
 from typing import Iterable
 from argparse import ArgumentParser
 from loguru import logger
-import pandas as pd
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, lit, concat
 spark = SparkSession.builder.appName("schema").enableHiveSupport().getOrCreate()

@@ -29,7 +29,7 @@ def _source_code_db(dbase, output):
         .parquet(f"{output}/{dbase}")
 
 
-def describe(table_name: str):
+def schema(table_name: str) -> str:
     """Describe a table.
     :param table_name: The name of the table to describe.
     :param from_cache: Whether to read cached results (if available)
@@ -42,30 +42,21 @@ def describe(table_name: str):
     if arr.size > 0:
         frame = frame.iloc[:arr.min(), ].copy()
     frame.col_name = frame.col_name.str.lower()
-    return frame
+    return table + "\n" + "\n".join(frame.col_name + "    " + frame.data_type)
 
 
-def _dump_schema_db(self, dbase, output_dir: Path) -> None:
+def _dump_schema_db(dbase: str, output_dir: str) -> None:
     logger.info("Dumping schema of tables in the database {}", dbase)
-    output_dir = output_dir / dbase
-    output_dir.mkdir(parents=True, exist_ok=True)
     tables = spark.sql(f"SHOW TABLES in {dbase}").toPandas()
-    for _, (db, table) in tqdm(tables[["database", "table"]].iterrows(), total=tables.shape[0]):
-        table = f"{db}.{table}"
-        schema = describe(table)
-        with (output_dir / f"{table}.txt").open("w") as fout:
-            fout.write(table + "\n")
-            for _, (col_name, data_type) in schema[["col_name", "data_type"]].iterrows(): 
-                fout.write(f"{col_name}    {data_type}\n")
+    tables["schema"] = [schema(table) for table in (tables.database + "." + tables.table)]
+    spark.createDataFrame(tables).write.mode("overwrite").parquet(f"{output_dir}/{dbase}")
 
 
-def dump_schema_db(self, dbs: Union[str, List[str]], output_dir: Union[str, Path] = ""):
+def dump_schema_db(dbs: Union[str, List[str]], output_dir: str):
     if isinstance(dbs, str):
         dbs = [dbs]
-    if isinstance(output_dir, str):
-        output_dir = Path(output_dir)
     for db in dbs:
-        self._dump_schema_db(db, output_dir)
+        _dump_schema_db(db, output_dir)
 
 
 def source_code_dbs(dbases: Iterable[str], output):
@@ -110,7 +101,7 @@ def main():
     if args.input:
         with open(args.input, "r") as fin:
             args.dbs = [line.strip() for line in fin]
-    source_code_dbs(args.dbs, args.output)
+    dump_schema_db(args.dbs, args.output)
 
 
 if __name__ == "__main__":

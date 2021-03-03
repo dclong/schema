@@ -1,36 +1,48 @@
+"""Get schema of Hive tables using PySpark.
+"""
 #!/usr/bin/env python3
-from typing import Iterable
-from argparse import ArgumentParser
+from __future__ import annotations
+from typing import Union, Iterable
+from argparse import ArgumentParser, Namespace
+import numpy as np
 from loguru import logger
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, lit, concat
 spark = SparkSession.builder.appName("schema").enableHiveSupport().getOrCreate()
 
 
-def source_code_table(full_name):
+def source_code_table(table_name: str) -> str:
     """Get the source code of a table.
+
+    :param tabe_name: The full name of a table.
     """
     try:
-        return spark.sql(f"show create table {full_name}").toPandas().iloc[0, 0]
-    except:
+        return spark.sql(f"show create table {table_name}").toPandas().iloc[0, 0]
+    except:  # pylint: disable=W0702
         return ""
 
 
-def _source_code_db(dbase, output):
+def _source_code_db(dbase: str, output_dir: str) -> None:
+    """Get the source code of tables in a database.
+
+    :param dbase: The name of a database.
+    :param output_dir: The output director.
+    """
     logger.info("Processing {}...", dbase)
-    df = spark.sql(f"show tables in {dbase}") \
-        .filter(col("isTemporary") == False) \
+    frame = spark.sql(f"show tables in {dbase}") \
+        .filter(~col("isTemporary")) \
         .withColumn("full_name", concat(col("database"), lit("."), col("tableName"))) \
         .toPandas()
-    df["source_code"] = df.full_name.apply(source_code_table)
-    spark.createDataFrame(df) \
+    frame["source_code"] = frame.full_name.apply(source_code_table)
+    spark.createDataFrame(frame) \
         .write \
         .mode("overwrite") \
-        .parquet(f"{output}/{dbase}")
+        .parquet(f"{output_dir}/{dbase}")
 
 
 def schema(table_name: str) -> str:
     """Describe a table.
+
     :param table_name: The name of the table to describe.
     :param from_cache: Whether to read cached results (if available)
     instead of querying the database.
@@ -42,31 +54,37 @@ def schema(table_name: str) -> str:
     if arr.size > 0:
         frame = frame.iloc[:arr.min(), ].copy()
     frame.col_name = frame.col_name.str.lower()
-    return table + "\n" + "\n".join(frame.col_name + "    " + frame.data_type)
+    return table_name + "\n" + "\n".join(frame.col_name + "    " + frame.data_type)
 
 
 def _dump_schema_db(dbase: str, output_dir: str) -> None:
     logger.info("Dumping schema of tables in the database {}", dbase)
     tables = spark.sql(f"SHOW TABLES in {dbase}").toPandas()
-    tables["schema"] = [schema(table) for table in (tables.database + "." + tables.table)]
-    spark.createDataFrame(tables).write.mode("overwrite").parquet(f"{output_dir}/{dbase}")
+    tables["schema"] = [schema(table) for table in tables.database + "." + tables.table]
+    spark.createDataFrame(tables).write.mode("overwrite"
+                                            ).parquet(f"{output_dir}/{dbase}")
 
 
-def dump_schema_db(dbs: Union[str, List[str]], output_dir: str):
-    if isinstance(dbs, str):
-        dbs = [dbs]
-    for db in dbs:
-        _dump_schema_db(db, output_dir)
+def dump_schema_db(dbases: Union[str, list[str]], output_dir: str) -> None:
+    """Dump schema of tables in databases.
+
+    :param dbs: A (list of) database(s).
+    :param output: The output directory.
+    """
+    if isinstance(dbases, str):
+        dbases = [dbases]
+    for dbase in dbases:
+        _dump_schema_db(dbase, output_dir)
 
 
-def source_code_dbs(dbases: Iterable[str], output):
+def source_code_dbs(dbases: Iterable[str], output) -> None:
     """Get the source code of tables in databases.
     """
     for dbase in dbases:
         _source_code_db(dbase, output)
 
 
-def parse_args(args=None, namespace=None):
+def parse_args(args=None, namespace=None) -> Namespace:
     """Parse command-line arguments.
     """
     parser = ArgumentParser(description="Get source of tables in databases.")
@@ -96,7 +114,9 @@ def parse_args(args=None, namespace=None):
     return parser.parse_args(args=args, namespace=namespace)
 
 
-def main():
+def main() -> None:
+    """The main function of the script.
+    """
     args = parse_args()
     if args.input:
         with open(args.input, "r") as fin:

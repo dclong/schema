@@ -60,6 +60,10 @@ def schema(table_name: str) -> str:
 def _dump_schema_db(dbase: str, output_dir: str) -> None:
     logger.info("Dumping schema of tables in the database {}", dbase)
     tables = spark.sql(f"SHOW TABLES in {dbase}").toPandas()
+    tables.rename(columns={
+        "tableName": "table",
+        "isTemporary": "is_temporary"
+    }, inplace=True)
     tables["schema"] = [schema(table) for table in tables.database + "." + tables.table]
     spark.createDataFrame(tables).write.mode("overwrite"
                                             ).parquet(f"{output_dir}/{dbase}")

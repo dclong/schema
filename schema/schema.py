@@ -45,7 +45,7 @@ def schema(table_name: str) -> str:
 
     :param table_name: The name of the table to describe.
     :param from_cache: Whether to read cached results (if available)
-    instead of querying the database.
+        instead of querying the database.
     :param to_cache: Whether to save SQL results to cache.
     :return: A DataFrame containing schema of the table.
     """
@@ -109,7 +109,7 @@ def parse_args(args=None, namespace=None) -> Namespace:
         "--output",
         dest="output",
         required=True,
-        help="Specify target memory in megabytes."
+        help="The HDFS path for output."
     )
     return parser.parse_args(args=args, namespace=namespace)
 
